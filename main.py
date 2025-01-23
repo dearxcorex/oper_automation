@@ -13,8 +13,8 @@ def main():
     console.print(Panel.fit("🤖 NBTC Automation System", style="bold blue"))
 
     # Credentials
-    username = "puvakrint.p"
-    password = "BvBHZ1rhah@"
+    username = "text"
+    password = "text"
 
     # Get absolute path
     current_path = os.path.dirname(os.path.abspath(__file__))
