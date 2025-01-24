@@ -19,6 +19,7 @@ class AnalyzeSpectrum:
             date_text = []
             for(bbox,text,prob) in results:
                 text = text.strip()
+                # print(text)
                 # Check for date pattern
                 date_pattern = r'\d{2}/\d{2}/\d{2}'
                 date_match = re.search(date_pattern, text)
@@ -27,19 +28,22 @@ class AnalyzeSpectrum:
 
                     if date not in date_text:
                         date_text.append(date)
-                        # print(f"Found date: {date}")
+                        print(f"Found date: {date}")
                     
-
-
-                if "Stop" in text:
+                center_match = re.search(r'Center:?\s*(\d+\.?\d*)\s*MHz', text)
+                if center_match:
+                    center_freq = int(center_match.group(1))
+                    if center_freq == 112:
+                        return "Unwanted Emission",date_text
+                elif "Stop" in text:
                     matches = re.findall(r'Stop:?\s*(\d+\.?\d*)\s*MHz', text)
                     if matches:
                         stop_freq = float(matches[0])
                     if stop_freq == 137:
                         # print("Found unwanted emission pattern")
                         return "Unwanted Emission",date_text
-            
-                elif "Occupied BW" in text or "N dB:" in text:
+                 
+                elif "Occupied BW" in text or "N dB:" in text or "OBW:" in text:
                     return "Bandwidth",date_text
 
                 elif "Upper Limit:" in text:
@@ -66,8 +70,9 @@ class AnalyzeSpectrum:
 
 
 if __name__ == "__main__":
-    path = "picture/990.jpg"
+    path = "picture/Measurement7100.png"
     analyzer = AnalyzeSpectrum()
     patten_type , date_text = analyzer.analyze_spectrum(path)
-
+    print(date_text)
     remark = analyzer.get_remark_text(patten_type)
+    print(remark)

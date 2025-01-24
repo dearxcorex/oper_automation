@@ -21,7 +21,7 @@ class NBTC_Automation:
         self.username = username
         self.password = password
         self.driver = self.initialize_driver()
-        self.login_url = "oper"
+        self.login_url = "https://fmr.nbtc.go.th/NBTCROS/"
         self.analyzer = AnalyzeSpectrum()
 
 
@@ -30,8 +30,8 @@ class NBTC_Automation:
         # options.add_argument('--headless')
         options.add_argument('--disable-gpu')
         options.add_argument('--no-sandbox')
-        # options.add_argument('--window-size=1270,1390')
-        # options.add_argument('--window-position=0,0')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('--window-position=0,0')
         service = Service(ChromeDriverManager().install())
         return webdriver.Chrome(service=service, options=options)
 
@@ -338,6 +338,7 @@ class NBTC_Automation:
             # opinion inspection
             time.sleep(1)
             find_dropdown_opinion = self.driver.find_element(By.ID, "OpinionDet")
+            self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", find_dropdown_opinion)
             drop_down_opinion = Select(find_dropdown_opinion)
             drop_down_opinion.select_by_index(1)
             time.sleep(0.5)
@@ -347,9 +348,9 @@ class NBTC_Automation:
 
 
             #click add equipment
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(1)
             add_equipment = self.driver.find_element(By.CSS_SELECTOR, "button[onclick='editItemEqu(0)']")
+            self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", add_equipment)
             add_equipment.click()
 
             #switch to iframe
@@ -388,12 +389,17 @@ class NBTC_Automation:
                 self.driver.switch_to.default_content()
 
            #Scroll to bottom
-            time.sleep(1)
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        
 
             #input date
+            time.sleep(3)
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        
+            date_input = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.ID, "DtTest"))
+            )
+            self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", date_input)
             time.sleep(1)
-            date_input = self.driver.find_element(By.ID, "DtTest")
             data_input_2 = self.driver.find_element(By.ID, "DtTest2")
             day,month,year = date_text[0].split("/")
             buddhist_year = int(year) + 543
@@ -456,10 +462,13 @@ class NBTC_Automation:
 
 
             #click save
+            #scroll to save button
             time.sleep(1)
+            # self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
             save_button = self.driver.find_element(By.ID, "bSave")
             save_button.click()
-
+            time.sleep(4)
             modal_button = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.btn-primary.swal2-styled"))
             )
