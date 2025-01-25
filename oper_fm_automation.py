@@ -21,7 +21,7 @@ class NBTC_Automation:
         self.username = username
         self.password = password
         self.driver = self.initialize_driver()
-        self.login_url = "https://fmr.nbtc.go.th/NBTCROS/"
+        self.login_url = "website"
         self.analyzer = AnalyzeSpectrum()
 
 
