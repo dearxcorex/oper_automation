@@ -23,26 +23,30 @@ class AnalyzeSpectrum:
                 # Check for date pattern
                 date_pattern = r'\d{2}/\d{2}/\d{2}'
                 date_match = re.search(date_pattern, text)
-                if date_match :
+                if date_match:
                     date = date_match.group()
-
-                    if date not in date_text:
-                        date_text.append(date)
-                        print(f"Found date: {date}")
+                    date_text.append(date)
+                    print(f"Found date: {date}")
+               
                     
                 center_match = re.search(r'Center:?\s*(\d+\.?\d*)\s*MHz', text)
                 if center_match:
                     center_freq = int(center_match.group(1))
                     if center_freq == 112:
                         return "Unwanted Emission",date_text
-                elif "Stop" in text:
+                elif "Stop:" in text:
                     matches = re.findall(r'Stop:?\s*(\d+\.?\d*)\s*MHz', text)
                     if matches:
                         stop_freq = float(matches[0])
                     if stop_freq == 137:
                         # print("Found unwanted emission pattern")
                         return "Unwanted Emission",date_text
-                 
+                elif "Start:" in text:
+                    matches = re.findall(r'Start:?\s*(\d+\.?\d*)\s*MHz', text)
+                    if matches:
+                        start_freq = float(matches[0])
+                    if start_freq == 87:
+                        return "Unwanted Emission",date_text
                 elif "Occupied BW" in text or "N dB:" in text or "OBW:" in text:
                     return "Bandwidth",date_text
 
@@ -70,9 +74,9 @@ class AnalyzeSpectrum:
 
 
 if __name__ == "__main__":
-    path = "picture/Measurement7100.png"
+    path = "/Users/deardevx/Documents/my_stufF/nbtc_project/automate_job/inspection_fm/picture/05540062/Measurement7107.png"
     analyzer = AnalyzeSpectrum()
     patten_type , date_text = analyzer.analyze_spectrum(path)
-    print(date_text)
+    print(f"pattern type: {patten_type} Date: {date_text}")
     remark = analyzer.get_remark_text(patten_type)
     print(remark)

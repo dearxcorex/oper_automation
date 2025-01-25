@@ -54,6 +54,7 @@ def main():
 
                     with console.status("[bold yellow]Processing details...") as status:
                         automation.input_detail_fm(picture_dir)
+                        # time.sleep(5)
                         console.print("[green]✓[/green] Details processed")
 
                     # Move processed folder

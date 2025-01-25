@@ -30,7 +30,8 @@ class NBTC_Automation:
         # options.add_argument('--headless')
         options.add_argument('--disable-gpu')
         options.add_argument('--no-sandbox')
-        options.add_argument('--window-size=1920,1080')
+        #size window
+        options.add_argument('--window-size=1270,1390')
         options.add_argument('--window-position=0,0')
         service = Service(ChromeDriverManager().install())
         return webdriver.Chrome(service=service, options=options)
@@ -161,18 +162,23 @@ class NBTC_Automation:
     # รายละเอียดสถานี 
     def input_detail_fm(self,path_picture):
         try:
-            # print("Start input detail")
-            time.sleep(2)
             self.driver.switch_to.default_content()
-            # List of panel IDs to toggle
-            panel_ids = ['1', '2', '3', '4']
-            for panel_id in panel_ids:
-                toggle_button = self.driver.find_element(By.CSS_SELECTOR, f"p[href='#collapse_panel_{panel_id}']")
+            time.sleep(2)
 
-                self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", toggle_button)
-                time.sleep(0.5)
-                toggle_button.click()
-                time.sleep(0.5)
+            # List of panel IDs to toggle
+            try:
+                panel_ids = ['1', '2', '3', '4']
+                for panel_id in panel_ids:
+                    toggle_button = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, f"p[href='#collapse_panel_{panel_id}']"))
+                    )
+
+                    self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", toggle_button)
+                    time.sleep(0.5)
+                    toggle_button.click()
+                    time.sleep(0.5)
+            except Exception as e:
+                print(f"Error toggle panel: {panel_id} : {e}")
 
             #scroll to รายละเอียดสถานี
             panel_heading = WebDriverWait(self.driver,10).until(
@@ -281,59 +287,63 @@ class NBTC_Automation:
             self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", scroll_to_add_pictures)
             time.sleep(0.5)
             picture_files = list(Path(path_picture).glob("*.[pj][np][gf]*"))
+            #get first date text
+            pattern_type , date_text = self.analyzer.analyze_spectrum(picture_files[0])
             for picture_file in picture_files:
 
-                #Analyze image first 
-                pattern_type , date_text = self.analyzer.analyze_spectrum(picture_file)
-                # print(f"pattern type: {pattern_type} Date: {date_text}")
-                analtze_spectrum_pictures = self.analyzer.get_remark_text(pattern_type)
-                # print(f"remark: {analtze_spectrum_pictures}")
-
-              
-                add_picture = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button[onclick='editItem(0)']"))
-                )
-                add_picture.click()
-                #switch to iframe
-                time.sleep(1)
-                modal_body = WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.CLASS_NAME, "modal-content"))
-                )
-                iframe = modal_body.find_elements(By.TAG_NAME, "iframe")
-                if len(iframe) > 0:
-                    # print(f"found {len(iframe)} iframe in modal")
-                    self.driver.switch_to.frame(iframe[0])
-
-                    #Select dropdown
-                    time.sleep(1)
-                    find_dropdown_picture = self.driver.find_element(By.ID, "PicTypeID")
-                    drop_down_picture = Select(find_dropdown_picture)
-                    if analtze_spectrum_pictures == "รูปภาพจากการตรวจสอบคลื่นความถี่":
-                        drop_down_picture.select_by_index(6)
-                    else:
-                        drop_down_picture.select_by_index(2) 
+                try:
+                    pattern_type ,_ = self.analyzer.analyze_spectrum(picture_file)
+                    
+                    analtze_spectrum_pictures = self.analyzer.get_remark_text(pattern_type)
+                    print(f"remark: {analtze_spectrum_pictures}")
 
                 
-
-                    #upload picture 
+                    add_picture = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button[onclick='editItem(0)']"))
+                    )
+                    add_picture.click()
+                    #switch to iframe
                     time.sleep(1)
-                    upload_picture = self.driver.find_element(By.ID, "File1")
-                    upload_picture.send_keys(str(picture_file.absolute()))
+                    modal_body = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.CLASS_NAME, "modal-content"))
+                    )
+                    iframe = modal_body.find_elements(By.TAG_NAME, "iframe")
+                    if len(iframe) > 0:
+                        # print(f"found {len(iframe)} iframe in modal")
+                        self.driver.switch_to.frame(iframe[0])
 
-                    #remark 
-                    time.sleep(1)
-                    remark = self.driver.find_element(By.ID, "Remark")
-                    remark.send_keys(analtze_spectrum_pictures)
+                        #Select dropdown
+                        time.sleep(1)
+                        find_dropdown_picture = self.driver.find_element(By.ID, "PicTypeID")
+                        drop_down_picture = Select(find_dropdown_picture)
+                        if analtze_spectrum_pictures == "รูปภาพจากการตรวจสอบคลื่นความถี่":
+                            drop_down_picture.select_by_index(6)
+                        else:
+                            drop_down_picture.select_by_index(2) 
 
-                    #save
-                    time.sleep(1)
-                    save_button = self.driver.find_element(By.CSS_SELECTOR, "button.btn.btn-primary i.iso-icon--save")
-                    save_button.click()
+                    
+
+                        #upload picture 
+                        time.sleep(1)
+                        upload_picture = self.driver.find_element(By.ID, "File1")
+                        upload_picture.send_keys(str(picture_file.absolute()))
+
+                        #remark 
+                        time.sleep(1)
+                        remark = self.driver.find_element(By.ID, "Remark")
+                        remark.send_keys(analtze_spectrum_pictures)
+
+                        #save
+                        time.sleep(1)
+                        save_button = self.driver.find_element(By.CSS_SELECTOR, "button.btn.btn-primary i.iso-icon--save")
+                        save_button.click()
 
 
 
-                    time.sleep(1)
-                    self.driver.switch_to.default_content()
+                        time.sleep(1)
+                        self.driver.switch_to.default_content()
+                except Exception as e:
+                    print(f"Error add picture: {e}")
 
             # opinion inspection
             time.sleep(1)
@@ -392,15 +402,18 @@ class NBTC_Automation:
         
 
             #input date
-            time.sleep(3)
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            
         
             date_input = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.ID, "DtTest"))
             )
+            print(f"found date input")
             self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", date_input)
             time.sleep(1)
-            data_input_2 = self.driver.find_element(By.ID, "DtTest2")
+            data_input_2 = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.ID, "DtTest2"))
+            )
+            # date_text_test = ["21/01/25"]
             day,month,year = date_text[0].split("/")
             buddhist_year = int(year) + 543
             time.sleep(1)
@@ -413,7 +426,7 @@ class NBTC_Automation:
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "td.active.day"))
             )
             active_date.click()
-
+            print(f"found active date")
             #input date 2
             time.sleep(1)
             data_input_2.clear()
@@ -443,41 +456,52 @@ class NBTC_Automation:
             time.sleep(1)
             inspector_crew_2 = self.driver.find_element(By.ID, "ChkAuthID_3")
             source_dropdown_inspector_crew_2 = Select(inspector_crew_2)
-            source_dropdown_inspector_crew_2.select_by_index(11)
+            source_dropdown_inspector_crew_2.select_by_index(16)
             time.sleep(1)
 
             #select inspector
             time.sleep(1)
             inspector_crew_3 = self.driver.find_element(By.ID, "ChkAuthID_4")
             source_dropdown_inspector_crew_3 = Select(inspector_crew_3)
-            source_dropdown_inspector_crew_3.select_by_index(16)
+            source_dropdown_inspector_crew_3.select_by_index(11)
             time.sleep(1)
 
             #boss 
             time.sleep(1)
             boss = self.driver.find_element(By.ID, "ApvNaID")
+          
             source_dropdown_boss = Select(boss)
             source_dropdown_boss.select_by_index(1)
             time.sleep(1)
 
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(1)
 
             #click save
             #scroll to save button
-            time.sleep(1)
-            # self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            try:
 
-            save_button = self.driver.find_element(By.ID, "bSave")
-            save_button.click()
-            time.sleep(4)
-            modal_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.btn-primary.swal2-styled"))
-            )
-            modal_button.click()
+                save_button = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "bSave"))
+                )
+               
+                save_button.click()
+                time.sleep(2)
+                modal_button = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button.swal2-confirm.btn-primary.swal2-styled"))
+                )
+                modal_button.click()
 
-            time.sleep(1)
+                time.sleep(5)
+
+                
+            except Exception as e:
+                print(f"Error save: {e}")
+
+           
 
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"Error input detail: {e}")
 
 
 
