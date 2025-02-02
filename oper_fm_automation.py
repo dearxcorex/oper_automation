@@ -18,10 +18,10 @@ from analyze_spectrum import AnalyzeSpectrum
 
 class NBTC_Automation:
     def __init__(self,username,password):
-        self.username = username
-        self.password = password
+        self.username = "puvakrint.p"
+        self.password = "BvBHZ1rhah@"
         self.driver = self.initialize_driver()
-        self.login_url = "website"
+        self.login_url = "https://fmr.nbtc.go.th/NBTCROS/Login.aspx"
         self.analyzer = AnalyzeSpectrum()
 
 
@@ -31,8 +31,10 @@ class NBTC_Automation:
         options.add_argument('--disable-gpu')
         options.add_argument('--no-sandbox')
         #size window
-        options.add_argument('--window-size=1270,1390')
-        options.add_argument('--window-position=0,0')
+        # options.add_argument('--window-size=1270,1390')
+        # options.add_argument('--window-position=0,0')
+
+        options.add_argument('--start-maximized')
         service = Service(ChromeDriverManager().install())
         return webdriver.Chrome(service=service, options=options)
 
@@ -113,6 +115,12 @@ class NBTC_Automation:
                 # print(f"found {len(iframe)} iframe in modal")
                 self.driver.switch_to.frame(iframe[0])
 
+                input_station_type = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.ID,"StnTypeID"))
+                )
+                station_type = Select(input_station_type)
+                station_type.select_by_index(8)
+                time.sleep(2)
                 input_field = WebDriverWait(self.driver, 10).until(
                     EC.presence_of_element_located((By.ID,"SiteCode"))
                 )
@@ -167,18 +175,53 @@ class NBTC_Automation:
 
             # List of panel IDs to toggle
             try:
+                try:
+                    WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable((By.TAG_NAME, "iframe"))
+                    )
+                    self.driver.switch_to.default_content()
+                    time.sleep(1)
+                except Exception as e:
+                    print(f"Error toggle panel: {panel_id} : {e}")
+                    
                 panel_ids = ['1', '2', '3', '4']
                 for panel_id in panel_ids:
-                    toggle_button = WebDriverWait(self.driver, 10).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, f"p[href='#collapse_panel_{panel_id}']"))
-                    )
-
-                    self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", toggle_button)
-                    time.sleep(0.5)
-                    toggle_button.click()
-                    time.sleep(0.5)
+                    try:
+                        # Wait for any overlays or modals to disappear
+                        time.sleep(1)
+                        self.driver.switch_to.default_content()
+                        
+                        # Wait for panel to be both present and clickable
+                        toggle_button = WebDriverWait(self.driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, f"p[href='#collapse_panel_{panel_id}']"))
+                        )
+                        
+                        # Scroll into view with offset to avoid header overlap
+                        self.driver.execute_script(
+                            "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
+                            toggle_button
+                        )
+                        time.sleep(1)
+                        
+                        # Try JavaScript click if regular click fails
+                        try:
+                            toggle_button.click()
+                        except:
+                            self.driver.execute_script("arguments[0].click();", toggle_button)
+                        
+                        time.sleep(1)
+                        
+                    except Exception as e:
+                        print(f"Error toggling panel {panel_id}: {str(e)}")
+                        # Try alternative clicking method
+                        try:
+                            element = self.driver.find_element(By.CSS_SELECTOR, f"p[href='#collapse_panel_{panel_id}']")
+                            self.driver.execute_script("arguments[0].click();", element)
+                        except:
+                            print(f"Failed alternative click for panel {panel_id}")
+                        continue
             except Exception as e:
-                print(f"Error toggle panel: {panel_id} : {e}")
+                print(f"Error toggle panel: {e}")
 
             #scroll to รายละเอียดสถานี
             panel_heading = WebDriverWait(self.driver,10).until(
@@ -286,9 +329,38 @@ class NBTC_Automation:
             scroll_to_add_pictures =  self.driver.find_element(By.CSS_SELECTOR, "p[href='#collapse_panel_4']") 
             self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", scroll_to_add_pictures)
             time.sleep(0.5)
-            picture_files = list(Path(path_picture).glob("*.[pj][np][gf]*"))
-            #get first date text
-            pattern_type , date_text = self.analyzer.analyze_spectrum(picture_files[0])
+            # Sort files by extension priority
+            picture_files = []
+            # First add all .jpg files
+            picture_files.extend(sorted(Path(path_picture).glob("*.[jJ][pP][gG]")))
+            picture_files.extend(sorted(Path(path_picture).glob("*.[jJ][pP][eE][gG]")))
+            # Then add all .png files
+            picture_files.extend(sorted(Path(path_picture).glob("*.[pP][nN][gG]")))
+
+            if not picture_files:
+                print("No picture files found")
+                return
+
+            # Get first date text
+            pattern_type, date_text = self.analyzer.analyze_spectrum(str(picture_files[0]))
+            print(f"Initial pattern: {pattern_type}")
+            print(f"Initial date: {date_text}")
+
+            # Check if date_text is empty or contains empty string
+            if not date_text or not date_text[0]:
+                print("No date found in first image, searching other images...")
+                # Try to find date in other images
+                for picture_file in picture_files[1:]:
+                    pattern_type, date_text = self.analyzer.analyze_spectrum(str(picture_file))
+                    if date_text and date_text[0]:
+                        print(f"Found date in {picture_file.name}: {date_text[0]}")
+                        break
+                else:  # No date found in any image
+                    print("No date found in any image!")
+                    return
+
+            print(f"Using date: {date_text[0]}")
+
             for picture_file in picture_files:
 
                 try:
@@ -342,8 +414,11 @@ class NBTC_Automation:
 
                         time.sleep(1)
                         self.driver.switch_to.default_content()
+            
                 except Exception as e:
                     print(f"Error add picture: {e}")
+            print(f"pattern_type_in_input_detail_fm: {pattern_type}")
+            print(f"date_text_in_input_detail_fm: {date_text}")
 
             # opinion inspection
             time.sleep(1)
@@ -456,14 +531,14 @@ class NBTC_Automation:
             time.sleep(1)
             inspector_crew_2 = self.driver.find_element(By.ID, "ChkAuthID_3")
             source_dropdown_inspector_crew_2 = Select(inspector_crew_2)
-            source_dropdown_inspector_crew_2.select_by_index(16)
+            source_dropdown_inspector_crew_2.select_by_index(17)
             time.sleep(1)
 
-            #select inspector
+            #select inspector 
             time.sleep(1)
             inspector_crew_3 = self.driver.find_element(By.ID, "ChkAuthID_4")
             source_dropdown_inspector_crew_3 = Select(inspector_crew_3)
-            source_dropdown_inspector_crew_3.select_by_index(11)
+            source_dropdown_inspector_crew_3.select_by_index(12)
             time.sleep(1)
 
             #boss 
@@ -498,10 +573,12 @@ class NBTC_Automation:
             except Exception as e:
                 print(f"Error save: {e}")
 
-           
 
         except Exception as e:
-            print(f"Error input detail: {e}")
+                    print(f"Error input detail: {e}") 
+            
 
+
+   
 
 
