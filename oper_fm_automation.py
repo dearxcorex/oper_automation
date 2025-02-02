@@ -15,13 +15,16 @@ from pathlib import Path
 from analyze_spectrum import AnalyzeSpectrum
 
 
+from dotenv import load_dotenv
+import os 
 
+load_dotenv()
 class NBTC_Automation:
-    def __init__(self,username,password):
-        self.username = "puvakrint.p"
-        self.password = "BvBHZ1rhah@"
+    def __init__(self):
+        self.username = os.getenv("NBTC_USERNAME")
+        self.password = os.getenv("NBTC_PASSWORD")
         self.driver = self.initialize_driver()
-        self.login_url = "https://fmr.nbtc.go.th/NBTCROS/Login.aspx"
+        self.login_url = os.getenv("NBTC_LOGIN_URL")
         self.analyzer = AnalyzeSpectrum()
 
 

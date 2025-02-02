@@ -43,3 +43,6 @@ chromedriver.exe
 
 # Keep picture and completed directories but ignore contents
 !picture/.gitkeep
+
+
+.env
