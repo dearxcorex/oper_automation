@@ -7,14 +7,15 @@ from oper_fm_automation import NBTC_Automation
 from utils import get_folder_names, print_summary, move_to_completed
 import time
 console = Console()
+# load_dotenv()
 
 def main():
     # Create header
     console.print(Panel.fit("🤖 NBTC Automation System", style="bold blue"))
 
     # Credentials
-    username = "username"
-    password = "password"
+    username = "puvakrint.p"
+    password = "BvBHZ1rhah@28"
 
     # Get absolute path
     current_path = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +23,7 @@ def main():
 
     # Initialize automation
     with console.status("[bold green]Initializing automation...") as status:
-        automation = NBTC_Automation(username, password)
+        automation = NBTC_Automation()
         automation.login()
         automation.navigate_to_fm_page()
         console.print("[green]✓[/green] Initialization complete")

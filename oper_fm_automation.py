@@ -527,22 +527,22 @@ class NBTC_Automation:
             time.sleep(1)
             inspector_crew_1 = self.driver.find_element(By.ID, "ChkAuthID_2")
             source_dropdown_inspector_crew_1 = Select(inspector_crew_1)
-            source_dropdown_inspector_crew_1.select_by_index(7)
+            source_dropdown_inspector_crew_1.select_by_index(16)
             time.sleep(1)
 
             #select inspector
             time.sleep(1)
             inspector_crew_2 = self.driver.find_element(By.ID, "ChkAuthID_3")
             source_dropdown_inspector_crew_2 = Select(inspector_crew_2)
-            source_dropdown_inspector_crew_2.select_by_index(17)
+            source_dropdown_inspector_crew_2.select_by_index(11)
             time.sleep(1)
 
             #select inspector 
-            time.sleep(1)
-            inspector_crew_3 = self.driver.find_element(By.ID, "ChkAuthID_4")
-            source_dropdown_inspector_crew_3 = Select(inspector_crew_3)
-            source_dropdown_inspector_crew_3.select_by_index(12)
-            time.sleep(1)
+            # time.sleep(1)
+            # inspector_crew_3 = self.driver.find_element(By.ID, "ChkAuthID_4")
+            # source_dropdown_inspector_crew_3 = Select(inspector_crew_3)
+            # source_dropdown_inspector_crew_3.select_by_index(12)
+            # time.sleep(1)
 
             #boss 
             time.sleep(1)
