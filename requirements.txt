@@ -33,6 +33,7 @@ rich==13.9.4
 scikit-image==0.24.0
 scipy==1.13.1
 selenium==4.27.1
+undetected-chromedriver
 shapely==2.0.6
 sniffio==1.3.1
 sortedcontainers==2.4.0

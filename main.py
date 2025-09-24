@@ -79,7 +79,9 @@ def main():
         style="green"
     ))
 
-    input("\n[dim]Press Enter to close the browser...[/dim]")
+    # Auto-close browser
+    console.print("[dim]Closing browser automatically...[/dim]")
+    automation.close()
 
 if __name__ == "__main__":
     main()

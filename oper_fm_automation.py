@@ -6,8 +6,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+import undetected_chromedriver as uc
 import time
 from selenium.webdriver.support.ui import Select
 
@@ -16,7 +15,8 @@ from analyze_spectrum import AnalyzeSpectrum
 
 
 from dotenv import load_dotenv
-import os 
+import os
+import random
 
 load_dotenv()
 class NBTC_Automation:
@@ -29,26 +29,120 @@ class NBTC_Automation:
 
 
     def initialize_driver(self):
-        options = Options()
-        # options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--no-sandbox')
-        #size window
-        # options.add_argument('--window-size=1270,1390')
-        # options.add_argument('--window-position=0,0')
+        """Initialize undetected Chrome driver for Cloudflare bypass"""
+        try:
+            # Configure undetected-chromedriver options
+            options = uc.ChromeOptions()
 
-        options.add_argument('--start-maximized')
-        service = Service(ChromeDriverManager().install())
-        return webdriver.Chrome(service=service, options=options)
+            # Basic options
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--start-maximized')
+
+            # Additional stealth options
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            options.add_argument('--disable-extensions-file-access-check')
+            options.add_argument('--disable-extensions-http-throttling')
+            options.add_argument('--disable-extensions-except')
+
+            # Create undetected Chrome driver
+            driver = uc.Chrome(
+                options=options,
+                use_subprocess=True,
+                version_main=None  # Auto-detect Chrome version
+            )
+
+            print("🚀 Undetected Chrome driver initialized")
+            return driver
+
+        except Exception as e:
+            print(f"❌ Error initializing undetected driver: {e}")
+            print("📋 Falling back to regular Chrome driver...")
+
+            # Fallback to regular Chrome with stealth options
+            options = Options()
+            options.add_argument('--disable-gpu')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--start-maximized')
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+
+            driver = webdriver.Chrome(options=options)
+
+            # Execute stealth scripts
+            stealth_scripts = [
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            ]
+
+            for script in stealth_scripts:
+                try:
+                    driver.execute_script(script)
+                except:
+                    pass
+
+            return driver
+
+    def human_delay(self, min_delay=0.5, max_delay=2.0):
+        """Add random delay to simulate human behavior"""
+        delay = random.uniform(min_delay, max_delay)
+        time.sleep(delay)
+
 
     def login(self):
+        """Simple login - let undetected-chromedriver handle everything"""
+        print("🔐 Starting login with undetected Chrome driver...")
+
+        # Navigate to login page - undetected driver will handle Cloudflare automatically
         self.driver.get(self.login_url)
-        username_input = self.driver.find_element(By.ID, "UserName")
-        username_input.send_keys(self.username)
-        password_input = self.driver.find_element(By.ID, "Password")
-        password_input.send_keys(self.password)
-        login_button = self.driver.find_element(By.ID, "bLogin")
-        login_button.click()
+        print("📱 Navigating to login page...")
+
+        # Wait for page to load and any challenges to be handled automatically
+        time.sleep(3)
+
+        # Find and fill login form
+        try:
+            print("📝 Looking for login form...")
+            username_input = WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located((By.ID, "UserName"))
+            )
+
+            # Fill username
+            username_input.clear()
+            username_input.send_keys(self.username)
+            print("👤 Username entered")
+
+            # Fill password
+            password_input = self.driver.find_element(By.ID, "Password")
+            password_input.clear()
+            password_input.send_keys(self.password)
+            print("🔑 Password entered")
+
+            # Click login
+            login_button = self.driver.find_element(By.ID, "bLogin")
+            login_button.click()
+            print("🚀 Login submitted")
+
+            # Wait for login to complete
+            print("⏳ Verifying login...")
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "a.nbtcros-sectionpage--item"))
+            )
+            print("✅ Login successful!")
+
+        except TimeoutException:
+            raise Exception("Login failed - could not find login form or verify success")
+        except Exception as e:
+            raise Exception(f"Login error: {str(e)}")
+
+    def close(self):
+        """Safely close the browser"""
+        try:
+            if hasattr(self, 'driver') and self.driver:
+                self.driver.quit()
+                print("🔒 Browser closed")
+        except Exception as e:
+            print(f"⚠️ Error closing browser: {e}")
 
     def navigate_to_fm_page(self):
         try:
@@ -122,7 +216,7 @@ class NBTC_Automation:
                     EC.presence_of_element_located((By.ID,"StnTypeID"))
                 )
                 station_type = Select(input_station_type)
-                station_type.select_by_index(8)
+                station_type.select_by_index(9)
                 time.sleep(2)
                 input_field = WebDriverWait(self.driver, 10).until(
                     EC.presence_of_element_located((By.ID,"SiteCode"))
