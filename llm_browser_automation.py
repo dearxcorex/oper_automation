@@ -31,7 +31,7 @@ except ImportError:
 
 load_dotenv()
 
-class LLMBrowserAgent:
+class NBTCBrowserUseAgent:
     def __init__(self):
         self.console = Console()
         self.username = os.getenv("NBTC_USERNAME")
@@ -450,8 +450,8 @@ class LLMBrowserAgent:
             self.close()
 
 
-def main():
-    """Main execution"""
+async def main():
+    """Main execution function"""
     console = Console()
 
     # Check for folders
@@ -465,16 +465,16 @@ def main():
         console.print("❌ No folders found", style="red")
         return
 
-    console.print(f"🤖 LLM Browser Agent ready. Testing with: {folders[0].name}")
+    console.print(f"🤖 Browser-use AI automation ready. Testing with: {folders[0].name}")
 
-    # Create agent
-    agent = LLMBrowserAgent()
+    # Create automation agent
+    automation = NBTCBrowserUseAgent()
 
     try:
-        success = agent.run_automation(str(folders[0]))
+        success = await automation.process_fm_folder(str(folders[0]))
 
         if success:
-            console.print("🎉 LLM automation completed successfully!", style="bold green")
+            console.print("🚀 Browser-use automation completed successfully!", style="bold green")
         else:
             console.print("❌ Automation failed", style="red")
 
@@ -483,4 +483,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Run the async automation
+    asyncio.run(main())
