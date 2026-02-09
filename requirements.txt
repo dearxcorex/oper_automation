@@ -1,12 +1,7 @@
-# LLM-Powered Browser Automation - Minimal Dependencies
+# SeleniumBase Automation for Cloudflare Bypass
 
 # Core automation
-playwright==1.55.0
-playwright-stealth==2.0.0
-
-# LLM APIs (choose one)
-anthropic>=0.68.0  # For Claude (recommended)
-openai>=1.0.0      # For GPT (alternative)
+seleniumbase
 
 # Image analysis (for spectrum analysis)
 easyocr==1.7.2
@@ -21,5 +16,3 @@ python-dotenv==1.0.1
 numpy
 torch
 torchvision
-
-# Note: After installing, run: python -m playwright install chromium
