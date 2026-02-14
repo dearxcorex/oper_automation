@@ -32,12 +32,12 @@ class AnalyzeSpectrum:
                 if date_match:
                     self.current_date = date_match.group()
                     found_date = True
-                    print(f"Found date in current image: {self.current_date}")
+                    pass
                     break
 
             # If no date found in current image, keep using previous date
             if not found_date and self.current_date:
-                print(f"Using previous date: {self.current_date}")
+                pass
 
             date_text = [self.current_date] if self.current_date else []
 
@@ -85,7 +85,6 @@ class AnalyzeSpectrum:
             "Not pattern detected": "รูปภาพจากการตรวจสอบคลื่นความถี่"
         }
         remark = remarks.get(pattern_type)
-        print(f"Pattern type: {pattern_type} -> Remark: {remark}")
         return remark
 
 if __name__ == "__main__":

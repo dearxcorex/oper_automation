@@ -11,6 +11,7 @@ pillow
 # Console interface
 rich==13.9.4
 python-dotenv==1.0.1
+questionary==2.1.1
 
 # Core scientific stack (required by EasyOCR)
 numpy

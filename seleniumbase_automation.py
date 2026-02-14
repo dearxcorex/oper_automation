@@ -13,8 +13,11 @@ import shutil
 import time
 from pathlib import Path
 
+import questionary
 from dotenv import load_dotenv
 from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 from seleniumbase import SB
 
 from analyze_spectrum import AnalyzeSpectrum
@@ -22,6 +25,12 @@ from analyze_spectrum import AnalyzeSpectrum
 load_dotenv()
 
 FORM_BASE_URL = "https://fmr.nbtc.go.th/Oper/ISO/11"
+
+INSPECTOR_OPTIONS = [
+    {"value": "491", "name": "นางสาว ปิยาพัชร เกิดไพบูลย์ (เจ้าหน้าที่ตรวจสอบและปฏิบัติการ)"},
+    {"value": "529", "name": "นาย ธีราทร ภิรมย์ไกรภักดิ์ (ลูกจ้างประจำ)"},
+    {"value": "637", "name": "พรคุณพระ กิตติวราพล (นตป. ก2)"},
+]
 
 
 def rid():
@@ -39,7 +48,35 @@ class NBTCSeleniumBaseAgent:
 
     def log(self, message, style="white"):
         timestamp = time.strftime("%H:%M:%S")
-        self.console.print(f"[{timestamp}] {message}", style=style)
+        icons = {"cyan": ">>", "green": "OK", "yellow": "!!", "red": "XX"}
+        icon = icons.get(style, "  ")
+        self.console.print(f"  [bold]{icon}[/bold] {timestamp}  {message}", style=style)
+
+    def prompt_inspectors(self):
+        self.console.print()
+        choices = [
+            questionary.Choice(title=opt["name"], value=opt["value"], checked=True)
+            for opt in INSPECTOR_OPTIONS
+        ]
+
+        selected_values = questionary.checkbox(
+            "Select inspectors (Space=toggle, Enter=confirm, min 1)",
+            choices=choices,
+            validate=lambda result: len(result) >= 1 or "Pick at least 1 inspector",
+        ).ask()
+
+        selected = []
+        lines = []
+        for val in selected_values:
+            name = next(opt["name"] for opt in INSPECTOR_OPTIONS if opt["value"] == val)
+            selected.append(val)
+            lines.append(f"  [green]ChkAuthID_{len(selected)}[/green]: {name}")
+        while len(selected) < 4:
+            selected.append(None)
+
+        lines.append(f"\n  [dim]Defaults: 500W / 6dBi / 60m / Heliax7/8[/dim]")
+        self.console.print(Panel("\n".join(lines), title="Configuration", border_style="cyan"))
+        self.selected_inspectors = selected
 
     def handle_cloudflare(self, sb):
         try:
@@ -122,8 +159,8 @@ class NBTCSeleniumBaseAgent:
                 sb.select_option_by_text('#DetAerial', "พบ")
             if sb.is_element_present('#DetFrq'):
                 freq_value = sb.execute_script(
-                    'return document.querySelector(".FreqMhz")'
-                    ' ? document.querySelector(".FreqMhz").textContent.replace(/[^0-9.]/g, "") : ""'
+                    'return document.getElementById("FreqMhz")'
+                    ' ? document.getElementById("FreqMhz").textContent.replace(/[^0-9.]/g, "").trim() : ""'
                 )
                 if freq_value:
                     sb.type("#DetFrq", freq_value)
@@ -316,7 +353,8 @@ class NBTCSeleniumBaseAgent:
 
     def fill_station_details(self, sb, pictures_folder):
         try:
-            self.log("Filling station details...", "cyan")
+            # --- [1/7] Analyze images ---
+            self.log("[1/7] Analyzing images...", "cyan")
 
             picture_files = sorted(
                 list(Path(pictures_folder).glob("*.png"))
@@ -325,7 +363,7 @@ class NBTCSeleniumBaseAgent:
             )
 
             if not picture_files:
-                self.log("No picture files found", "red")
+                self.log("[1/7] No picture files found", "red")
                 return False
 
             image_analysis = []
@@ -340,10 +378,8 @@ class NBTCSeleniumBaseAgent:
                     break
 
             if not first_date:
-                self.log("No date found in images, using default", "yellow")
+                self.log("[1/7] No date found in images, using default", "yellow")
                 first_date = "01/01/25"
-
-            self.log(f"Using date: {first_date}", "cyan")
 
             day, month, year = first_date.split("/")
             buddhist_year = 2000 + int(year) + 543
@@ -352,59 +388,64 @@ class NBTCSeleniumBaseAgent:
             today = datetime.date.today()
             today_thai = f"{today.day:02d}/{today.month:02d}/{today.year + 543}"
 
+            unique_patterns = []
+            seen = set()
+            for item in image_analysis:
+                if item["pattern"] != "Not pattern detected" and item["pattern"] not in seen:
+                    unique_patterns.append(item["pattern"])
+                    seen.add(item["pattern"])
+
+            self.log(f"[1/7] {len(picture_files)} images, {len(unique_patterns)} patterns, date: {first_date} -> {formatted_date}", "green")
+
             sb.switch_to_default_content()
             sb.sleep(2)
             sb.execute_script('window.scrollTo(0, 0)')
             sb.sleep(1)
 
-            # --- Panel 1 (WebDriver mode) ---
+            # --- [2/7] Panel 1: Station details ---
+            self.log("[2/7] Panel 1: Station details...", "cyan")
             self.fill_panel1(sb)
 
-            # --- Get TmpKey and AreaID ---
             tmp_key = sb.execute_script('return document.getElementById("TmpKey").value')
             area_id = sb.execute_script('return document.getElementById("AreaID").value')
-            self.log(f"TmpKey: {tmp_key}, AreaID: {area_id}", "cyan")
+            self.log("[2/7] Panel 1 done", "green")
 
-            # --- Panel 2: Frequency details (new tabs via window.open) ---
+            # --- [3/7] Panel 2: Frequency details ---
+            self.log(f"[3/7] Panel 2: Frequency details ({len(unique_patterns)} patterns)...", "cyan")
             try:
-                unique_patterns = []
-                seen = set()
-                for item in image_analysis:
-                    if item["pattern"] != "Not pattern detected" and item["pattern"] not in seen:
-                        unique_patterns.append(item["pattern"])
-                        seen.add(item["pattern"])
-
                 for pattern in unique_patterns:
                     success = self.fill_fq_item(sb, tmp_key, pattern)
                     if success:
-                        self.log(f"Added frequency detail: {pattern}", "cyan")
+                        self.log(f"       + {pattern}", "green")
                     else:
-                        self.log(f"Failed frequency detail: {pattern}", "red")
+                        self.log(f"       x {pattern}", "red")
 
                 sb.execute_script('loadFqItem()')
                 sb.sleep(3)
-                self.log("Panel 2: Frequency details done", "green")
+                self.log("[3/7] Panel 2 done", "green")
             except Exception as e:
-                self.log(f"Panel 2 error: {e}", "yellow")
+                self.log(f"[3/7] Panel 2 error: {e}", "yellow")
 
-            # --- Panel 3: Pictures (new tabs via window.open) ---
+            # --- [4/7] Panel 3: Pictures ---
+            self.log(f"[4/7] Panel 3: Uploading {len(image_analysis)} pictures...", "cyan")
             try:
                 for item in image_analysis:
                     pic_file = item["file"]
                     pattern = item["pattern"]
                     success = self.fill_pic_item(sb, tmp_key, pic_file, pattern)
                     if success:
-                        self.log(f"Uploaded: {pic_file.name} ({pattern})", "cyan")
+                        self.log(f"       + {pic_file.name}", "green")
                     else:
-                        self.log(f"Failed upload: {pic_file.name}", "red")
+                        self.log(f"       x {pic_file.name}", "red")
 
                 sb.execute_script('loadItem()')
                 sb.sleep(3)
-                self.log("Panel 3: Pictures done", "green")
+                self.log("[4/7] Panel 3 done", "green")
             except Exception as e:
-                self.log(f"Panel 3 error: {e}", "yellow")
+                self.log(f"[4/7] Panel 3 error: {e}", "yellow")
 
-            # --- Equipment table (need >= 2 rows for validation) ---
+            # --- [5/7] Equipment table ---
+            self.log("[5/7] Equipment table...", "cyan")
             try:
                 equipment_list = [
                     ("10", "H-R&S-FSH8"),
@@ -415,11 +456,12 @@ class NBTCSeleniumBaseAgent:
                     if success:
                         sb.execute_script('loadItemEqu()')
                         sb.sleep(3)
-                self.log("Equipment table done", "green")
+                self.log(f"[5/7] Equipment done ({len(equipment_list)} items)", "green")
             except Exception as e:
-                self.log(f"Equipment error: {e}", "yellow")
+                self.log(f"[5/7] Equipment error: {e}", "yellow")
 
-            # --- Panel 4: Inspector opinion ---
+            # --- [6/7] Panel 4: Opinion + Approvers + Dates ---
+            self.log("[6/7] Panel 4: Opinion, approvers, dates...", "cyan")
             try:
                 sb.execute_script('''
                     var p = document.querySelector('p[href="#collapse_panel_4"]');
@@ -436,11 +478,9 @@ class NBTCSeleniumBaseAgent:
                     if (remark) remark.value = "ตรงตามมาตรฐาน";
                 ''')
                 sb.sleep(1)
-                self.log("Panel 4: Opinion filled", "green")
             except Exception as e:
-                self.log(f"Panel 4 error: {e}", "yellow")
+                self.log(f"[6/7] Opinion error: {e}", "yellow")
 
-            # --- Test equipment dropdowns ---
             try:
                 sb.execute_script('''
                     var el = document.getElementById("TestEq");
@@ -454,48 +494,44 @@ class NBTCSeleniumBaseAgent:
                     }
                 ''')
                 sb.sleep(1)
-                self.log("Test equipment dropdown filled", "green")
             except Exception as e:
-                self.log(f"Test equipment error: {e}", "yellow")
+                self.log(f"[6/7] Test equipment error: {e}", "yellow")
 
-            # --- Approvers ---
             try:
-                sb.execute_script('''
-                    var fields = [
-                        {id: "ChkAuthID_1", idx: 10},
-                        {id: "ChkAuthID_2", idx: 11},
-                        {id: "ChkAuthID_3", idx: 8},
-                        {id: "ApvNaID", idx: 1}
-                    ];
-                    fields.forEach(function(f) {
-                        var el = document.getElementById(f.id);
-                        if (el && el.options.length > f.idx) {
-                            el.selectedIndex = f.idx;
-                            if (typeof $ !== "undefined") $("#" + f.id).selectpicker("refresh");
-                        }
-                    });
-                ''')
+                inspector_js_parts = []
+                for i, val in enumerate(self.selected_inspectors):
+                    if val:
+                        field_id = f"ChkAuthID_{i+1}"
+                        inspector_js_parts.append(
+                            f'var el{i} = document.getElementById("{field_id}");'
+                            f' if (el{i}) {{ el{i}.value = "{val}";'
+                            f' if (typeof $ !== "undefined") $("#{field_id}").selectpicker("refresh"); }}'
+                        )
+                inspector_js_parts.append(
+                    'var apv = document.getElementById("ApvNaID");'
+                    ' if (apv && apv.options.length > 1) { apv.selectedIndex = 1;'
+                    ' if (typeof $ !== "undefined") $("#ApvNaID").selectpicker("refresh"); }'
+                )
+                sb.execute_script("\n".join(inspector_js_parts))
                 sb.sleep(1)
-                self.log("Approvers filled", "green")
             except Exception as e:
-                self.log(f"Approvers error: {e}", "yellow")
+                self.log(f"[6/7] Approvers error: {e}", "yellow")
 
-            # --- Dates ---
             try:
                 sb.execute_script(f'''
                     document.getElementById("DtTest").value = "{formatted_date}";
                     document.getElementById("DtTest2").value = "{formatted_date}";
-                    document.getElementById("DtTestRep").value = "{formatted_date}";
+                    document.getElementById("DtTestRep").value = "{today_thai}";
                     document.getElementById("DtApv").value = "{today_thai}";
                 ''')
                 sb.sleep(1)
-                self.log(f"Dates filled: {formatted_date}", "green")
+                self.log(f"[6/7] Done (test: {formatted_date}, report: {today_thai})", "green")
             except Exception as e:
-                self.log(f"Dates error: {e}", "yellow")
+                self.log(f"[6/7] Dates error: {e}", "yellow")
 
-            # --- Save ---
+            # --- [7/7] Save ---
+            self.log("[7/7] Saving form...", "cyan")
             try:
-                self.log("Saving form...", "cyan")
                 sb.execute_script('window.scrollTo(0, document.body.scrollHeight)')
                 sb.sleep(2)
 
@@ -515,11 +551,10 @@ class NBTCSeleniumBaseAgent:
                     __doPostBack('bSave','');
                     return "SAVE_TRIGGERED";
                 ''')
-                self.log(f"Save result: {save_result}", "cyan")
 
                 if str(save_result).startswith("VALIDATION_FAILED"):
                     failed_validators = str(save_result).split(":")[1]
-                    self.log(f"Validation failed: {failed_validators}", "red")
+                    self.log(f"[7/7] Validation failed: {failed_validators}", "red")
                     return False
 
                 sb.sleep(8)
@@ -531,37 +566,42 @@ class NBTCSeleniumBaseAgent:
                 except Exception:
                     pass
 
-                self.log("Form saved successfully", "green")
+                self.log("[7/7] Form saved", "green")
             except Exception as e:
-                self.log(f"Save failed: {e}", "red")
+                self.log(f"[7/7] Save failed: {e}", "red")
                 return False
 
-            self.log("Station processing complete", "green")
             return True
         except Exception as e:
             self.log(f"Fill details failed: {e}", "red")
             return False
 
     def run_automation(self, fm_folder):
+        start_time = time.time()
         try:
             fm_number = Path(fm_folder).name
-            self.console.print(f"\nProcessing: {fm_number}", style="bold green")
 
             with SB(uc=True, test=True, incognito=True, locale="th", headless=False) as sb:
                 if not self.login(sb):
-                    return False
+                    return False, 0
                 if not self.navigate_to_fm_standards(sb):
-                    return False
+                    return False, 0
                 if not self.add_fm_station(sb, fm_number):
-                    return False
+                    return False, 0
                 if not self.fill_station_details(sb, fm_folder):
-                    return False
+                    return False, 0
 
-            self.console.print(f"FM station {fm_number} processed successfully", style="bold green")
-            return True
+            elapsed = time.time() - start_time
+            return True, elapsed
         except Exception as e:
             self.log(f"Automation failed: {e}", "red")
-            return False
+            elapsed = time.time() - start_time
+            return False, elapsed
+
+
+def format_elapsed(seconds):
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m {s:02d}s" if m else f"{s}s"
 
 
 def main():
@@ -572,55 +612,71 @@ def main():
     completed_dir.mkdir(exist_ok=True)
 
     if not picture_dir.exists():
-        console.print("Picture directory not found", style="red")
+        console.print(Panel("[red]Picture directory not found[/red]", title="Error", border_style="red"))
         return
 
     folders = sorted([f for f in picture_dir.iterdir() if f.is_dir()])
     if not folders:
-        console.print("No folders found", style="red")
+        console.print(Panel("[red]No station folders found in picture/[/red]", title="Error", border_style="red"))
         return
 
-    console.print(
-        f"SeleniumBase UC Mode ready. {len(folders)} station(s) to process.",
-        style="bold cyan",
-    )
-    for f in folders:
-        console.print(f"   {f.name}", style="cyan")
+    station_list = "\n".join(f"  [cyan]{i+1}.[/cyan] {f.name}" for i, f in enumerate(folders))
+    console.print(Panel(
+        f"  Stations to process: [bold]{len(folders)}[/bold]\n\n{station_list}",
+        title="NBTC FM Inspection Automation",
+        border_style="cyan",
+    ))
 
     automation = NBTCSeleniumBaseAgent()
-    succeeded = []
-    failed = []
+    automation.prompt_inspectors()
 
-    for folder in folders:
-        console.print(f"\n{'='*50}", style="bold white")
-        console.print(
-            f"Processing: {folder.name} ({folders.index(folder)+1}/{len(folders)})",
-            style="bold cyan",
-        )
-        console.print(f"{'='*50}", style="bold white")
+    if not questionary.confirm("Start processing?", default=True).ask():
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
+
+    console.print()
+    results = []
+
+    for idx, folder in enumerate(folders):
+        console.print(Panel(
+            f"  [bold]{folder.name}[/bold]  ({idx+1}/{len(folders)})\n"
+            f"  Login -> Navigate -> Select -> Fill -> Save",
+            title=f"Station {idx+1}/{len(folders)}",
+            border_style="blue",
+        ))
 
         try:
-            success = automation.run_automation(str(folder))
+            success, elapsed = automation.run_automation(str(folder))
             if success:
                 dest = completed_dir / folder.name
                 if dest.exists():
                     shutil.rmtree(dest)
                 shutil.move(str(folder), str(dest))
-                console.print(f"Moved {folder.name} -> completed/", style="green")
-                succeeded.append(folder.name)
+                console.print(f"  [green]OK[/green] {folder.name} -> completed/ ({format_elapsed(elapsed)})\n")
+                results.append({"station": folder.name, "status": "OK", "time": format_elapsed(elapsed)})
             else:
-                console.print(f"Station {folder.name} failed, skipping", style="red")
-                failed.append(folder.name)
+                console.print(f"  [red]FAILED[/red] {folder.name} ({format_elapsed(elapsed)})\n")
+                results.append({"station": folder.name, "status": "FAILED", "time": format_elapsed(elapsed)})
         except Exception as e:
-            console.print(f"Error processing {folder.name}: {e}", style="red")
-            failed.append(folder.name)
+            console.print(f"  [red]ERROR[/red] {folder.name}: {e}\n")
+            results.append({"station": folder.name, "status": "ERROR", "time": "--"})
 
-    console.print(f"\n{'='*50}", style="bold white")
-    console.print(f"SUMMARY: {len(succeeded)} succeeded, {len(failed)} failed", style="bold cyan")
-    if succeeded:
-        console.print(f"   OK: {', '.join(succeeded)}", style="green")
-    if failed:
-        console.print(f"   FAIL: {', '.join(failed)}", style="red")
+    table = Table(title="Summary", border_style="cyan", show_lines=True)
+    table.add_column("Station", style="bold")
+    table.add_column("Status", justify="center")
+    table.add_column("Time", justify="right")
+
+    ok_count = 0
+    for r in results:
+        status_style = "green" if r["status"] == "OK" else "red"
+        table.add_row(r["station"], f"[{status_style}]{r['status']}[/{status_style}]", r["time"])
+        if r["status"] == "OK":
+            ok_count += 1
+
+    console.print()
+    console.print(table)
+    fail_count = len(results) - ok_count
+    console.print(f"\n  [bold]{ok_count}[/bold] succeeded, [bold]{fail_count}[/bold] failed\n")
 
 
 if __name__ == "__main__":
