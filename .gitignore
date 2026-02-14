@@ -41,6 +41,11 @@ chromedriver.exe
 *.jpg
 *.jpeg
 
+# SeleniumBase logs
+latest_logs/
+archived_logs/
+dashboard.html
+
 # Keep picture and completed directories but ignore contents
 !picture/.gitkeep
 
