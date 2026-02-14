@@ -1,264 +1,182 @@
-# AGENTS.md - Development Guidelines for NBTC FM Inspection Automation
+# AGENTS.md - NBTC FM Inspection Automation
 
-## Environment & Build Commands
+Python automation that logs into the NBTC website, analyzes FM radio spectrum images via OCR, and fills inspection forms using SeleniumBase UC Mode for Cloudflare bypass.
+
+## Project Structure
+
+```
+inspection_fm/
+├── seleniumbase_automation.py   # Main browser automation (NBTCSeleniumBaseAgent)
+├── analyze_spectrum.py          # OCR spectrum image analysis (AnalyzeSpectrum)
+├── picture/                     # Input: FM station folders with spectrum images
+├── completed/                   # Output: processed station folders
+├── requirements.txt             # Python dependencies (uv)
+├── .env                         # Credentials (NBTC_USERNAME, NBTC_PASSWORD, NBTC_LOGIN_URL)
+└── .env.example                 # Template for .env
+```
+
+## Environment & Commands
 
 ### Setup
 ```bash
-# Always use uv virtual environment
-uv venv
-source .venv/bin/activate  # macOS/Linux
-
-# Install dependencies
+uv venv && source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
-### Running the Application
+### Running
 ```bash
-# Main SeleniumBase UC Mode automation
-python seleniumbase_automation.py
-
-# Test spectrum analysis only
-python analyze_spectrum.py
-
-# Quick test SeleniumBase is ready
-python -c "from seleniumbase import SB; sb = SB(uc=True); print('SB ready')"
+python seleniumbase_automation.py          # Full automation
+python analyze_spectrum.py                 # Spectrum analysis only
 ```
 
-### Running Tests
-This project does not use pytest. Tests are run by directly executing the main scripts:
-- Run `python analyze_spectrum.py` for spectrum analysis testing
-- Run `python seleniumbase_automation.py` for full automation testing
+### Testing
+No test framework (no pytest). Verify by running scripts directly:
+- `python analyze_spectrum.py` -- processes all images in `picture/`, prints summary
+- `python seleniumbase_automation.py` -- runs full end-to-end automation
 
-### No Linting/Type Checking
-This project has no configured linting or type checking tools.
+### Linting / Type Checking
+None configured. No linters, formatters, or type checkers.
 
 ## Code Style Guidelines
 
 ### Imports
-- Standard library imports first (os, time, base64, pathlib)
-- Third-party imports second (playwright, anthropic, openai, easyocr, cv2)
-- Use `try/except ImportError` for optional dependencies
-- Import `load_dotenv()` and call it immediately after imports
+Three groups separated by blank lines: (1) standard library, (2) third-party, (3) local.
+Call `load_dotenv()` immediately after imports at module level.
+Use `try/except ImportError` with boolean flags for optional dependencies.
 
 ```python
-# Standard library
 import os
 import time
-import base64
 from pathlib import Path
 
-# Third-party
-from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
+from rich.console import Console
+from seleniumbase import SB
 
-# Optional imports
-try:
-    import anthropic
-    HAS_ANTHROPIC = True
-except ImportError:
-    HAS_ANTHROPIC = False
+from analyze_spectrum import AnalyzeSpectrum
 
 load_dotenv()
 ```
 
-### Classes
-- Use PascalCase for class names
-- Use descriptive names that reflect functionality
-- Include docstring under class definition
-
-```python
-class AnalyzeSpectrum:
-    def __init__(self):
-        self.reader = easyocr.Reader(['en'])
-        self.current_date = None
-```
-
-### Functions & Methods
-- Use snake_case for function/method names
-- Methods that perform actions should be verbs (e.g., `smart_click`, `analyze_spectrum`)
-- Methods that return booleans often start with `is_` or `has_`
-- Use descriptive names that indicate what the function does
-
-```python
-def smart_click(self, description):
-    def analyze_spectrum(self, image_path):
-    def setup_llm(self):
-```
-
-### Constants
-- Use UPPERCASE with underscores for module-level constants
-- Use descriptive names that indicate boolean flags or configuration values
-
-```python
-HAS_ANTHROPIC = True
-HAS_OPENAI = False
-```
-
-### Variables
-- Use snake_case for all variables
-- Use descriptive names that indicate purpose
-- Prefer `self.attribute_name` over abbreviations
-
-```python
-self.username = os.getenv("NBTC_USERNAME")
-screenshot_path = f"{name}.png"
-fm_number = Path(fm_folder).name
-```
+### Naming Conventions
+| Element        | Convention   | Examples                                    |
+|----------------|-------------|---------------------------------------------|
+| Classes        | PascalCase  | `AnalyzeSpectrum`, `NBTCSeleniumBaseAgent`  |
+| Functions      | snake_case  | `analyze_spectrum`, `handle_cloudflare`     |
+| Variables      | snake_case  | `fm_number`, `picture_files`                |
+| Constants      | UPPER_SNAKE | `HAS_ANTHROPIC = True`                      |
+| Files          | snake_case  | `analyze_spectrum.py`                       |
 
 ### Type Hints
-- Not used in this codebase
-- Do not add type hints unless explicitly requested
+Not used. Do not add type hints unless explicitly requested.
 
-### Docstrings
-- Include docstrings for classes and complex methods
-- Keep them brief and descriptive
-- Triple-quoted strings with consistent indentation
+### Strings
+Use f-strings exclusively. No `.format()` or `%` formatting.
 
-```python
-class NBTCBrowserUseAgent:
-    """LLM-powered browser agent for NBTC automation"""
+### File Paths
+Use `pathlib.Path` for all path operations. Convert with `str(path)` when needed.
 
-    def smart_click(self, description):
-        """Use LLM to find and click elements intelligently"""
-```
+### Comments
+**Do not add comments** unless explicitly requested. Use descriptive names instead.
+Docstrings are acceptable for classes and complex methods.
+
+### Shebang
+Include `#!/usr/bin/env python3` at the top of executable scripts.
+
+### Environment Variables
+Load with `python-dotenv`. Access via `os.getenv("KEY")`.
+Never commit `.env` -- use `.env.example` as the template.
 
 ### Error Handling
-- Use `try/except` blocks for operations that may fail
-- Log/print errors with context
-- Return `False` or `None` on failure when appropriate
-- Use specific exception types when possible
+Wrap operations in `try/except Exception`. Return `False` on failure.
+Chain calls with early-return-on-failure in orchestrator methods.
 
 ```python
 try:
-    self.playwright = sync_playwright().start()
-    # ... operations ...
+    # operation
+    self.log("Success message", "green")
+    return True
 except Exception as e:
-    self.log(f"❌ Browser setup failed: {e}", "red")
+    self.log(f"Operation failed: {e}", "red")
     return False
+
+# Orchestrator pattern
+def run_automation(self, fm_folder):
+    if not self.login(sb):
+        return False
+    if not self.navigate_to_fm_standards(sb):
+        return False
 ```
 
-### Logging & Output
-- Use `rich.Console` for colored, formatted console output
-- Create a `log()` method that adds timestamps
-- Use emoji indicators for different log levels:
-  - 🚀 Starting/Initializing
-  - ✅ Success
-  - ⚠️ Warning/Fallback
-  - ❌ Error
-  - 🛡️ Cloudflare/CAPTCHA handling
-- Include timestamps in logs: `[HH:MM:SS]`
+### Logging
+Use `rich.Console` with timestamped output. Color by severity.
+`analyze_spectrum.py` uses plain `print()` instead.
 
 ```python
-from rich.console import Console
-
 def log(self, message, style="white"):
     timestamp = time.strftime("%H:%M:%S")
     self.console.print(f"[{timestamp}] {message}", style=style)
-
-# Usage
-self.log("🚀 Starting SeleniumBase automation...", "cyan")
-self.log("✅ Login successful", "green")
-self.log("🛡️ Cloudflare bypassed", "yellow")
 ```
 
-### String Formatting
-- Use f-strings for all string interpolation
-- Do not use `.format()` or `%` formatting
-- Keep f-string expressions simple
+| Style      | Use for                    |
+|------------|----------------------------|
+| `"cyan"`   | Info, starting operations  |
+| `"green"`  | Success                    |
+| `"yellow"` | Warnings, Cloudflare       |
+| `"red"`    | Errors                     |
 
+## SeleniumBase Patterns
+
+### UC Mode Configuration
 ```python
-fm_number = Path(fm_folder).name
-self.log(f"📻 Processing FM station: {fm_number}", "cyan")
+with SB(uc=True, test=True, incognito=True, locale="th", headless=False) as sb:
 ```
+- Always `uc=True` for Cloudflare bypass
+- Always `incognito=True` for anti-detection
+- Never `headless=True` (detectable by Cloudflare)
 
-### File Paths
-- Use `pathlib.Path` for all path operations
-- Convert paths to strings when needed with `str(path)`
-- Use Path methods like `.exists()`, `.name`, `.glob()`
+### Navigation & CAPTCHA
+- `sb.uc_open_with_reconnect(url, reconnect_time)` for stealth navigation
+- `sb.uc_gui_click_captcha()` for automatic CAPTCHA solving
 
+### Iframe Handling
 ```python
-from pathlib import Path
-
-picture_dir = Path("picture")
-fm_number = Path(fm_folder).name
-screenshot_path = Path("current_page.png")
+sb.switch_to_frame("iframe#selector")
+# ... interact with elements inside iframe ...
+sb.switch_to_default_content()
 ```
-
-### Environment Variables
-- Use `python-dotenv` for loading `.env` files
-- Call `load_dotenv()` immediately after imports
-- Use `os.getenv()` to retrieve values
-- Provide default values where appropriate
-
-```python
-from dotenv import load_dotenv
-
-load_dotenv()
-
-self.username = os.getenv("NBTC_USERNAME")
-self.password = os.getenv("NBTC_PASSWORD")
-```
-
-### Comments
-- **DO NOT add any comments** unless explicitly requested
-- Use descriptive variable and function names instead
-- Docstrings are acceptable for classes and complex methods
-
-### Shebang
-- Include shebang at the top of main executable scripts
-- Use `#!/usr/bin/env python3` for maximum portability
-
-```python
-#!/usr/bin/env python3
-```
-
-### Special Patterns
-
-#### SeleniumBase UC Mode
-- Always use `SB(uc=True)` for Cloudflare bypass
-- Use `uc_open_with_reconnect()` for stealth navigation
-- Use `uc_gui_click_captcha()` for automatic CAPTCHA solving
-- Enable `incognito=True` for better anti-detection
-- Never use `headless=True` with UC Mode (detectable)
-
-#### Browser Automation
-- Use SeleniumBase methods for all browser interactions
-- Work in iframes with `.switch_to_frame()` and `.switch_to_default_content()`
-- Use `:contains()` pseudo-selector for text matching
-- Wait for elements with `wait_for_element()` and `wait_for_clickable()`
-- Handle Cloudflare automatically with `uc_gui_click_captcha()`
-
-#### Image Analysis
-- Use EasyOCR for text extraction from images
-- Use OpenCV (cv2) for image processing
-- Use regex for pattern matching in extracted text
-- Support Thai language in OCR when needed
-
-#### Class Initialization
-- Initialize `Console()` and other resources in `__init__`
-- Use lazy initialization for expensive operations
-- Store optional dependencies with flags (e.g., `HAS_ANTHROPIC`)
-
-## Project-Specific Notes
 
 ### Selectors
-- Use direct CSS selectors with SeleniumBase methods
-- Use `:contains()` pseudo-selector for text matching (supports Thai)
-- SeleniumBase automatically detects between CSS and XPath
-- Keep selectors simple and direct
-- Example: `self.sb.click('button:contains("Login")')`
+- Use CSS selectors with SeleniumBase methods
+- Use `:contains("text")` pseudo-selector for text matching (supports Thai)
+- SeleniumBase auto-detects CSS vs XPath
+- Example: `sb.click('a:contains("บันทึก")')`
 
-### Multi-language Support
-- Natural language strings in both English and Thai
-- Thai text in user-facing messages and web page descriptions
-- OCR supports English primarily
+### Waits
+- `sb.wait_for_element("selector")` before interacting
+- `sb.wait_for_element_clickable("selector")` before clicking
+- `time.sleep()` for hard waits when needed (Cloudflare timing)
 
-### Debugging
-- Use screenshots extensively - they show what AI sees
-- Keep browser open temporarily for inspection after operations
-- Log all operations with timestamps and status indicators
+## Image Analysis Patterns
 
-### File Structure
-- Input folders in `picture/` directory
-- Completed folders moved to `completed/` directory
-- Each folder represents one FM station with spectrum images
+### OCR Pipeline
+- EasyOCR with English reader: `easyocr.Reader(['en'])`
+- OpenCV (`cv2`) for image loading
+- Regex for pattern detection in OCR text
+
+### Spectrum Pattern Types
+| Pattern                     | Detection Keywords                          |
+|-----------------------------|---------------------------------------------|
+| Unwanted Emission           | `Center:`, `Stop:`, `Start:` with specific MHz |
+| Bandwidth                   | `Occupied BW`, `N dB:`, `OBW:`             |
+| Frequency Deviation Limits  | `Upper Limit:`                              |
+
+### Date Handling
+- Dates extracted from images in `DD/MM/YY` format via regex
+- Converted to Buddhist calendar: `DDMM2{YY+543}` for form submission
+- Persisted across images via `self.current_date` (images without dates inherit the last found date)
+
+## Multi-language Notes
+- Web UI interaction uses Thai text (navigation links, button labels, form fields)
+- Log messages use English with emoji prefixes
+- OCR runs in English mode only

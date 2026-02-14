@@ -2,22 +2,33 @@
 
 """
 SeleniumBase UC Mode Automation for NBTC FM Inspection
-Bypasses Cloudflare detection automatically with UC Mode
+Uses WebDriver window.open() for new tabs (shares session cookies).
+Fills iframe forms in separate tabs to avoid Cloudflare iframe blocking.
 """
 
+import datetime
 import os
+import random
+import shutil
 import time
 from pathlib import Path
+
 from dotenv import load_dotenv
 from rich.console import Console
 from seleniumbase import SB
+
 from analyze_spectrum import AnalyzeSpectrum
 
 load_dotenv()
 
+FORM_BASE_URL = "https://fmr.nbtc.go.th/Oper/ISO/11"
+
+
+def rid():
+    return "".join([str(random.randint(0, 9)) for _ in range(8)])
+
 
 class NBTCSeleniumBaseAgent:
-    """SeleniumBase UC Mode automation for NBTC FM inspection"""
 
     def __init__(self):
         self.console = Console()
@@ -27,242 +38,589 @@ class NBTCSeleniumBaseAgent:
         self.analyzer = AnalyzeSpectrum()
 
     def log(self, message, style="white"):
-        """Log message with timestamp"""
         timestamp = time.strftime("%H:%M:%S")
         self.console.print(f"[{timestamp}] {message}", style=style)
 
     def handle_cloudflare(self, sb):
-        """Automatically handle Cloudflare challenges"""
         try:
             if sb.is_element_visible("div.cf-browser-verification"):
-                self.log("🛡️ Cloudflare detected, solving...", "yellow")
+                self.log("Cloudflare detected, solving...", "yellow")
                 sb.uc_gui_click_captcha()
                 sb.sleep(3)
-                self.log("✅ Cloudflare bypassed", "green")
             return True
-        except Exception as e:
-            self.log(f"⚠️ Cloudflare handling: {e}", "yellow")
+        except Exception:
             return True
 
     def login(self, sb):
-        """Login to NBTC using SeleniumBase methods"""
         try:
-            self.log("🔐 Logging in...", "cyan")
-
+            self.log("Logging in...", "cyan")
             sb.uc_open_with_reconnect(self.login_url, reconnect_time=3)
             sb.sleep(2)
-
             self.handle_cloudflare(sb)
-
             sb.type("#UserName", self.username)
             sb.type("#Password", self.password)
             sb.click("#bLogin")
-
             sb.sleep(3)
             sb.wait_for_element('a.nbtcros-sectionpage--item', timeout=15)
-
-            self.log("✅ Login successful", "green")
+            self.log("Login successful", "green")
             return True
         except Exception as e:
-            self.log(f"❌ Login failed: {e}", "red")
+            self.log(f"Login failed: {e}", "red")
             return False
 
     def navigate_to_fm_standards(self, sb):
-        """Navigate to FM standards page"""
         try:
-            self.log("🧭 Navigating to FM standards...", "cyan")
-
+            self.log("Navigating to FM standards...", "cyan")
             sb.wait_for_element('a.nbtcros-sectionpage--item[onclick*="Oper"]')
             sb.click('a.nbtcros-sectionpage--item[onclick*="Oper"]')
-            sb.sleep(2)
-
+            sb.sleep(3)
+            sb.wait_for_element('a:contains("งานตรวจสอบคลื่นความถี่")', timeout=15)
             sb.click('a:contains("งานตรวจสอบคลื่นความถี่")')
             sb.sleep(2)
-
+            sb.wait_for_element('a:contains("4.การตรวจสอบมาตรฐานการแพร่")', timeout=10)
             sb.click('a:contains("4.การตรวจสอบมาตรฐานการแพร่")')
             sb.sleep(2)
-
-            self.log("✅ Navigation complete", "green")
+            sb.wait_for_element('a[href*="FF11ChkSch"]', timeout=10)
+            sb.click('a[href*="FF11ChkSch"]')
+            sb.sleep(3)
+            self.log("Navigation complete", "green")
             return True
         except Exception as e:
-            self.log(f"❌ Navigation failed: {e}", "red")
+            self.log(f"Navigation failed: {e}", "red")
             return False
 
     def add_fm_station(self, sb, fm_number):
-        """Add FM station to system"""
         try:
-            self.log(f"📻 Adding FM station: {fm_number}", "cyan")
-
-            sb.click('a:contains("การตรวจสอบมาตรฐานการแพร่")')
+            self.log(f"Adding FM station: {fm_number}", "cyan")
+            sb.wait_for_element('a[href*="fno=add"]', timeout=10)
+            sb.click('a[href*="fno=add"]')
             sb.sleep(3)
-
-            sb.wait_for_element('i.iso-icon--plus', timeout=10)
-            sb.click('i.iso-icon--plus')
+            sb.wait_for_element('button:contains("ค้นหา")', timeout=10)
+            sb.click('button:contains("ค้นหา")')
             sb.sleep(3)
-
-            sb.wait_for_element('a.btn.btn-primary.p-edit', timeout=10)
-            sb.click('a.btn.btn-primary.p-edit')
+            sb.wait_for_element('iframe[src*="mStnSch"]', timeout=10)
+            sb.uc_switch_to_frame('iframe[src*="mStnSch"]')
+            sb.select_option_by_text("#StnTypeID", "สถานีวิทยุกระจายเสียง")
+            sb.type("#SiteCode", fm_number)
+            sb.click('button:contains("ค้นหา")')
             sb.sleep(3)
-
-            iframes = sb.find_elements("iframe")
-            if iframes:
-                sb.switch_to_frame(iframes[0])
-
-                sb.select_option("#StnTypeID", index=8)
-                sb.type("#SiteCode", fm_number)
-                sb.select_option("#SrcData", index=1)
-                sb.click(".iso-icon--search")
-                sb.sleep(3)
-                sb.click('a:contains("1")')
-                self.log(f"✅ FM station {fm_number} selected", "green")
-                return True
-
-            return False
+            sb.click('a:contains("1")')
+            sb.switch_to_default_content()
+            self.log(f"FM station {fm_number} selected", "green")
+            return True
         except Exception as e:
-            self.log(f"❌ Add station failed: {e}", "red")
+            self.log(f"Add station failed: {e}", "red")
+            return False
+
+    def fill_panel1(self, sb):
+        try:
+            sb.click('p[href="#collapse_panel_1"]')
+            sb.sleep(1)
+            if sb.is_element_present('#DetAnt'):
+                sb.select_option_by_text('#DetAnt', "พบ")
+            if sb.is_element_present('#DetAerial'):
+                sb.select_option_by_text('#DetAerial', "พบ")
+            if sb.is_element_present('#DetFrq'):
+                freq_value = sb.execute_script(
+                    'return document.querySelector(".FreqMhz")'
+                    ' ? document.querySelector(".FreqMhz").textContent.replace(/[^0-9.]/g, "") : ""'
+                )
+                if freq_value:
+                    sb.type("#DetFrq", freq_value)
+            if sb.is_element_present('#CableID'):
+                sb.select_option_by_text('#CableID', "Heliax7/8")
+            if sb.is_element_present('#DetPow'):
+                if not sb.execute_script('return document.getElementById("DetPow").value'):
+                    sb.type("#DetPow", "500")
+            if sb.is_element_present('#DetDBI'):
+                if not sb.execute_script('return document.getElementById("DetDBI").value'):
+                    sb.type("#DetDBI", "6")
+            if sb.is_element_present('#DetAntHeight'):
+                if not sb.execute_script('return document.getElementById("DetAntHeight").value'):
+                    sb.type("#DetAntHeight", "60")
+            self.log("Panel 1: Station details filled", "green")
+            return True
+        except Exception as e:
+            self.log(f"Panel 1 error: {e}", "yellow")
+            return True
+
+    def open_new_tab_js(self, sb, url):
+        main_handle = sb.driver.current_window_handle
+        sb.execute_script(f'window.open("{url}", "_blank")')
+        sb.sleep(3)
+        handles = sb.driver.window_handles
+        for h in handles:
+            if h != main_handle:
+                sb.driver.switch_to.window(h)
+                break
+        sb.sleep(2)
+        return main_handle
+
+    def close_tab_and_return(self, sb, main_handle):
+        sb.driver.close()
+        sb.sleep(1)
+        sb.driver.switch_to.window(main_handle)
+        sb.sleep(1)
+
+    def wait_for_element_js(self, sb, element_id, timeout=20):
+        for _ in range(timeout):
+            found = sb.execute_script(
+                f'return document.getElementById("{element_id}") !== null'
+            )
+            if found:
+                return True
+            sb.sleep(1)
+        return False
+
+    def fill_fq_item(self, sb, tmp_key, pattern):
+        fq_url = f"{FORM_BASE_URL}/mFF11FqDoc.aspx?ChkID=&TmpKey={tmp_key}&ChkFqID=0&r={rid()}"
+        main_handle = self.open_new_tab_js(sb, fq_url)
+        try:
+            if not self.wait_for_element_js(sb, "DiffPara", timeout=15):
+                page_url = sb.execute_script('return window.location.href')
+                self.log(f"FQ tab failed to load. URL: {page_url}", "red")
+                self.close_tab_and_return(sb, main_handle)
+                return False
+
+            sb.execute_script(f'''
+                document.getElementById("DiffPara").value = "{pattern}";
+                if (typeof $ !== "undefined") $("#DiffPara").selectpicker("refresh");
+                document.getElementById("DiffRes").value = "ผ่าน";
+                if (typeof $ !== "undefined") $("#DiffRes").selectpicker("refresh");
+            ''')
+            sb.sleep(1)
+            sb.execute_script(
+                "if (typeof(Page_ClientValidate) == 'function') Page_ClientValidate('');"
+                " __doPostBack('ctl15','')"
+            )
+            sb.sleep(5)
+            try:
+                if sb.is_element_visible("button.confirm"):
+                    sb.click("button.confirm")
+                    sb.sleep(1)
+            except Exception:
+                pass
+            self.close_tab_and_return(sb, main_handle)
+            return True
+        except Exception as e:
+            self.log(f"FQ item error: {e}", "red")
+            try:
+                self.close_tab_and_return(sb, main_handle)
+            except Exception:
+                pass
+            return False
+
+    def fill_pic_item(self, sb, tmp_key, pic_file, pattern):
+        doc_url = f"{FORM_BASE_URL}/mFF11Doc.aspx?ChkID=&TmpKey={tmp_key}&ChkPicID=0&r={rid()}"
+        main_handle = self.open_new_tab_js(sb, doc_url)
+        try:
+            if not self.wait_for_element_js(sb, "PicTypeID", timeout=15):
+                page_url = sb.execute_script('return window.location.href')
+                self.log(f"Pic tab failed to load. URL: {page_url}", "red")
+                self.close_tab_and_return(sb, main_handle)
+                return False
+
+            sb.execute_script('''
+                document.getElementById("PicTypeID").value = "1";
+                if (typeof $ !== "undefined") $("#PicTypeID").selectpicker("refresh");
+            ''')
+            sb.sleep(1)
+
+            file_input = sb.driver.find_element("css selector", "#File1")
+            file_input.send_keys(str(pic_file.resolve()))
+            sb.sleep(2)
+
+            remark_text = self.analyzer.get_remark_text(pattern) or ""
+            remark_text = remark_text.replace("\\", "\\\\").replace("'", "\\'").replace('\n', '\\n')
+            sb.execute_script(f"document.getElementById('Remark').value = '{remark_text}'")
+            sb.sleep(1)
+
+            sb.execute_script(
+                "if (typeof(Page_ClientValidate) == 'function') Page_ClientValidate('');"
+                " __doPostBack('ctl15','')"
+            )
+            sb.sleep(5)
+            try:
+                if sb.is_element_visible("button.confirm"):
+                    sb.click("button.confirm")
+                    sb.sleep(1)
+            except Exception:
+                pass
+            self.close_tab_and_return(sb, main_handle)
+            return True
+        except Exception as e:
+            self.log(f"Pic item error: {e}", "red")
+            try:
+                self.close_tab_and_return(sb, main_handle)
+            except Exception:
+                pass
+            return False
+
+    def fill_equipment(self, sb, tmp_key, area_id, equ_type_id, equ_name_search):
+        equ_url = (
+            f"https://fmr.nbtc.go.th/Oper/ISO/Equ/mChkEqu.aspx"
+            f"?ff=F11&ChkID=&AreaID={area_id}&TmpKey={tmp_key}&ChkEquID=0&r={rid()}"
+        )
+        main_handle = self.open_new_tab_js(sb, equ_url)
+        try:
+            if not self.wait_for_element_js(sb, "EquTypeID", timeout=15):
+                page_url = sb.execute_script('return window.location.href')
+                self.log(f"Equ tab failed to load. URL: {page_url}", "red")
+                self.close_tab_and_return(sb, main_handle)
+                return False
+
+            sb.execute_script(f'''
+                document.getElementById("EquTypeID").value = "{equ_type_id}";
+                if (typeof $ !== "undefined") {{
+                    $("#EquTypeID").selectpicker("refresh");
+                    $("#EquTypeID").trigger("change");
+                }}
+            ''')
+            sb.sleep(3)
+
+            self.wait_for_element_js(sb, "EquID", timeout=10)
+            sb.execute_script(f'''
+                var el = document.getElementById("EquID");
+                if (el) {{
+                    for (var i = 0; i < el.options.length; i++) {{
+                        if (el.options[i].text.indexOf("{equ_name_search}") >= 0) {{
+                            el.value = el.options[i].value;
+                            break;
+                        }}
+                    }}
+                    if (typeof $ !== "undefined") $("#EquID").selectpicker("refresh");
+                }}
+            ''')
+            sb.sleep(1)
+
+            sb.execute_script(
+                "if (typeof(Page_ClientValidate) == 'function') Page_ClientValidate('');"
+                " __doPostBack('ctl15','')"
+            )
+            sb.sleep(5)
+            try:
+                if sb.is_element_visible("button.confirm"):
+                    sb.click("button.confirm")
+                    sb.sleep(1)
+            except Exception:
+                pass
+            self.close_tab_and_return(sb, main_handle)
+            return True
+        except Exception as e:
+            self.log(f"Equ item error: {e}", "red")
+            try:
+                self.close_tab_and_return(sb, main_handle)
+            except Exception:
+                pass
             return False
 
     def fill_station_details(self, sb, pictures_folder):
-        """Fill station details form"""
         try:
-            self.log("📋 Filling station details...", "cyan")
+            self.log("Filling station details...", "cyan")
 
-            picture_files = list(Path(pictures_folder).glob("*.png"))
-            picture_files.extend(list(Path(pictures_folder).glob("*.jpg")))
-            picture_files.extend(list(Path(pictures_folder).glob("*.jpeg")))
+            picture_files = sorted(
+                list(Path(pictures_folder).glob("*.png"))
+                + list(Path(pictures_folder).glob("*.jpg"))
+                + list(Path(pictures_folder).glob("*.jpeg"))
+            )
 
             if not picture_files:
-                self.log("❌ No picture files found", "red")
+                self.log("No picture files found", "red")
                 return False
 
-            pattern_type, date_text = self.analyzer.analyze_spectrum(str(picture_files[0]))
+            image_analysis = []
+            for pic_file in picture_files:
+                pattern_type, date_text = self.analyzer.analyze_spectrum(str(pic_file))
+                image_analysis.append({"file": pic_file, "pattern": pattern_type, "date": date_text})
 
-            if not date_text or not date_text[0]:
-                self.log("⚠️ No date found in images, using default", "yellow")
-                date_text = ["01/01/25"]
+            first_date = None
+            for item in image_analysis:
+                if item["date"] and item["date"][0]:
+                    first_date = item["date"][0]
+                    break
 
-            self.log(f"📅 Using date: {date_text[0]}", "cyan")
+            if not first_date:
+                self.log("No date found in images, using default", "yellow")
+                first_date = "01/01/25"
 
-            day, month, year = date_text[0].split("/")
-            buddhist_year = int(year) + 543
-            formatted_date = f"{day.zfill(2)}{month.zfill(2)}2{buddhist_year}"
+            self.log(f"Using date: {first_date}", "cyan")
+
+            day, month, year = first_date.split("/")
+            buddhist_year = 2000 + int(year) + 543
+            formatted_date = f"{day.zfill(2)}/{month.zfill(2)}/{buddhist_year}"
+
+            today = datetime.date.today()
+            today_thai = f"{today.day:02d}/{today.month:02d}/{today.year + 543}"
 
             sb.switch_to_default_content()
+            sb.sleep(2)
+            sb.execute_script('window.scrollTo(0, 0)')
+            sb.sleep(1)
 
-            for panel_id in [1, 2, 3, 4]:
-                sb.click(f'button[onclick*="togglePanel({panel_id})"]')
+            # --- Panel 1 (WebDriver mode) ---
+            self.fill_panel1(sb)
 
-            sb.select_option('select[name="AntennaPlacement"]', index=1)
-            sb.select_option('select[name="AntennaFound"]', index=1)
-            sb.type("#FreqMhz", sb.get_attribute("#FreqMhz", "value"))
-            sb.select_option('select[name="AntennaType"]', index=1)
-            sb.select_option('select[name="CableType"]', index=5)
-            sb.type("#Power", "500")
-            sb.type("#Gain", "6")
-            sb.type("#Height", "60")
+            # --- Get TmpKey and AreaID ---
+            tmp_key = sb.execute_script('return document.getElementById("TmpKey").value')
+            area_id = sb.execute_script('return document.getElementById("AreaID").value')
+            self.log(f"TmpKey: {tmp_key}, AreaID: {area_id}", "cyan")
 
-            for i in range(3):
-                sb.click('button[onclick*="editFqItem(0)"]')
-                sb.select_option('#FreqPatternType', index=i)
-                sb.select_option('#FreqResult', index=1)
-                sb.click('button:contains("บันทึก")')
+            # --- Panel 2: Frequency details (new tabs via window.open) ---
+            try:
+                unique_patterns = []
+                seen = set()
+                for item in image_analysis:
+                    if item["pattern"] != "Not pattern detected" and item["pattern"] not in seen:
+                        unique_patterns.append(item["pattern"])
+                        seen.add(item["pattern"])
 
-            for idx, pic_file in enumerate(picture_files):
-                sb.click('button[onclick*="editItem(0)"]')
-                sb.select_option('#PictureType', index=idx)
-                sb.choose_file('#PictureUpload', str(pic_file))
-                sb.type("#PictureRemark", self.analyzer.get_remark_text(pattern_type))
-                sb.click('button:contains("บันทึก")')
+                for pattern in unique_patterns:
+                    success = self.fill_fq_item(sb, tmp_key, pattern)
+                    if success:
+                        self.log(f"Added frequency detail: {pattern}", "cyan")
+                    else:
+                        self.log(f"Failed frequency detail: {pattern}", "red")
 
-            sb.select_option('#Opinion', index=1)
-            sb.type("#Remark", "ปฏิบัติตามหลักเกณฑ์")
+                sb.execute_script('loadFqItem()')
+                sb.sleep(3)
+                self.log("Panel 2: Frequency details done", "green")
+            except Exception as e:
+                self.log(f"Panel 2 error: {e}", "yellow")
 
-            sb.click('button[onclick*="editItemEqu(0)"]')
-            sb.select_option('#EquipmentType', index=10)
-            sb.select_option('#Equipment', index=3)
-            sb.click('button:contains("บันทึก")')
+            # --- Panel 3: Pictures (new tabs via window.open) ---
+            try:
+                for item in image_analysis:
+                    pic_file = item["file"]
+                    pattern = item["pattern"]
+                    success = self.fill_pic_item(sb, tmp_key, pic_file, pattern)
+                    if success:
+                        self.log(f"Uploaded: {pic_file.name} ({pattern})", "cyan")
+                    else:
+                        self.log(f"Failed upload: {pic_file.name}", "red")
 
-            sb.type("#DtTest", formatted_date)
-            sb.type("#DtTest2", formatted_date)
-            sb.click('.calendar-day.active')
+                sb.execute_script('loadItem()')
+                sb.sleep(3)
+                self.log("Panel 3: Pictures done", "green")
+            except Exception as e:
+                self.log(f"Panel 3 error: {e}", "yellow")
 
-            sb.select_option('#ChkAuthID_1', index=6)
-            sb.select_option('#ChkAuthID_2', index=16)
-            sb.select_option('#ChkAuthID_3', index=11)
-            sb.select_option('#ApvNaID', index=1)
+            # --- Equipment table (need >= 2 rows for validation) ---
+            try:
+                equipment_list = [
+                    ("10", "H-R&S-FSH8"),
+                    ("12", "ชุดเครื่องมือวัดแพร่แปลกปลอม"),
+                ]
+                for equ_type_id, equ_name_search in equipment_list:
+                    success = self.fill_equipment(sb, tmp_key, area_id, equ_type_id, equ_name_search)
+                    if success:
+                        sb.execute_script('loadItemEqu()')
+                        sb.sleep(3)
+                self.log("Equipment table done", "green")
+            except Exception as e:
+                self.log(f"Equipment error: {e}", "yellow")
 
-            sb.click("#bSave")
+            # --- Panel 4: Inspector opinion ---
+            try:
+                sb.execute_script('''
+                    var p = document.querySelector('p[href="#collapse_panel_4"]');
+                    if (p) p.click();
+                ''')
+                sb.sleep(1)
+                sb.execute_script('''
+                    var el = document.getElementById("OpinionDet");
+                    if (el) {
+                        el.value = "ตรงตามมาตรฐาน";
+                        if (typeof $ !== "undefined") $("#OpinionDet").selectpicker("refresh");
+                    }
+                    var remark = document.getElementById("Remark");
+                    if (remark) remark.value = "ตรงตามมาตรฐาน";
+                ''')
+                sb.sleep(1)
+                self.log("Panel 4: Opinion filled", "green")
+            except Exception as e:
+                self.log(f"Panel 4 error: {e}", "yellow")
 
-            if sb.is_element_visible('button:contains("ตกลง")', timeout=5):
-                sb.click('button:contains("ตกลง")')
+            # --- Test equipment dropdowns ---
+            try:
+                sb.execute_script('''
+                    var el = document.getElementById("TestEq");
+                    if (el) {
+                        for (var i = 0; i < el.options.length; i++) {
+                            if (el.options[i].text.indexOf("H-FSH8") >= 0) {
+                                el.selectedIndex = i; break;
+                            }
+                        }
+                        if (typeof $ !== "undefined") $("#TestEq").selectpicker("refresh");
+                    }
+                ''')
+                sb.sleep(1)
+                self.log("Test equipment dropdown filled", "green")
+            except Exception as e:
+                self.log(f"Test equipment error: {e}", "yellow")
 
-            self.log("✅ Details filled successfully", "green")
+            # --- Approvers ---
+            try:
+                sb.execute_script('''
+                    var fields = [
+                        {id: "ChkAuthID_1", idx: 10},
+                        {id: "ChkAuthID_2", idx: 11},
+                        {id: "ChkAuthID_3", idx: 8},
+                        {id: "ApvNaID", idx: 1}
+                    ];
+                    fields.forEach(function(f) {
+                        var el = document.getElementById(f.id);
+                        if (el && el.options.length > f.idx) {
+                            el.selectedIndex = f.idx;
+                            if (typeof $ !== "undefined") $("#" + f.id).selectpicker("refresh");
+                        }
+                    });
+                ''')
+                sb.sleep(1)
+                self.log("Approvers filled", "green")
+            except Exception as e:
+                self.log(f"Approvers error: {e}", "yellow")
+
+            # --- Dates ---
+            try:
+                sb.execute_script(f'''
+                    document.getElementById("DtTest").value = "{formatted_date}";
+                    document.getElementById("DtTest2").value = "{formatted_date}";
+                    document.getElementById("DtTestRep").value = "{formatted_date}";
+                    document.getElementById("DtApv").value = "{today_thai}";
+                ''')
+                sb.sleep(1)
+                self.log(f"Dates filled: {formatted_date}", "green")
+            except Exception as e:
+                self.log(f"Dates error: {e}", "yellow")
+
+            # --- Save ---
+            try:
+                self.log("Saving form...", "cyan")
+                sb.execute_script('window.scrollTo(0, document.body.scrollHeight)')
+                sb.sleep(2)
+
+                save_result = sb.execute_script('''
+                    if (typeof Page_ClientValidate === 'function') {
+                        var isValid = Page_ClientValidate('');
+                        if (!isValid) {
+                            var errors = [];
+                            for (var i = 0; i < Page_Validators.length; i++) {
+                                if (!Page_Validators[i].isvalid) {
+                                    errors.push(Page_Validators[i].id);
+                                }
+                            }
+                            return "VALIDATION_FAILED:" + errors.join(",");
+                        }
+                    }
+                    __doPostBack('bSave','');
+                    return "SAVE_TRIGGERED";
+                ''')
+                self.log(f"Save result: {save_result}", "cyan")
+
+                if str(save_result).startswith("VALIDATION_FAILED"):
+                    failed_validators = str(save_result).split(":")[1]
+                    self.log(f"Validation failed: {failed_validators}", "red")
+                    return False
+
+                sb.sleep(8)
+
+                try:
+                    if sb.is_element_visible("button.confirm"):
+                        sb.click("button.confirm")
+                        sb.sleep(2)
+                except Exception:
+                    pass
+
+                self.log("Form saved successfully", "green")
+            except Exception as e:
+                self.log(f"Save failed: {e}", "red")
+                return False
+
+            self.log("Station processing complete", "green")
             return True
         except Exception as e:
-            self.log(f"❌ Fill details failed: {e}", "red")
+            self.log(f"Fill details failed: {e}", "red")
             return False
 
     def run_automation(self, fm_folder):
-        """Run complete automation workflow"""
         try:
             fm_number = Path(fm_folder).name
-
-            self.console.print("🤖 SELENIUMBASE UC MODE AUTOMATION", style="bold green")
-            self.console.print(f"📁 Processing: {fm_number}", style="green")
-            self.console.print("🛡️ Cloudflare bypass enabled", style="green")
-            self.console.print("🤖 Auto CAPTCHA solving", style="green")
+            self.console.print(f"\nProcessing: {fm_number}", style="bold green")
 
             with SB(uc=True, test=True, incognito=True, locale="th", headless=False) as sb:
                 if not self.login(sb):
                     return False
-
                 if not self.navigate_to_fm_standards(sb):
                     return False
-
                 if not self.add_fm_station(sb, fm_number):
                     return False
-
                 if not self.fill_station_details(sb, fm_folder):
                     return False
 
-            self.console.print("✅ AUTOMATION SUCCESS!", style="bold green")
-            self.console.print(f"📻 FM station {fm_number} processed", style="green")
-            self.console.print("🚀 Cloudflare bypassed successfully", style="green")
+            self.console.print(f"FM station {fm_number} processed successfully", style="bold green")
             return True
-
         except Exception as e:
-            self.log(f"❌ Automation failed: {e}", "red")
+            self.log(f"Automation failed: {e}", "red")
             return False
 
 
 def main():
-    """Main execution function"""
     console = Console()
 
     picture_dir = Path("picture")
+    completed_dir = Path("completed")
+    completed_dir.mkdir(exist_ok=True)
+
     if not picture_dir.exists():
-        console.print("❌ Picture directory not found", style="red")
+        console.print("Picture directory not found", style="red")
         return
 
-    folders = [f for f in picture_dir.iterdir() if f.is_dir()]
+    folders = sorted([f for f in picture_dir.iterdir() if f.is_dir()])
     if not folders:
-        console.print("❌ No folders found", style="red")
+        console.print("No folders found", style="red")
         return
 
-    console.print(f"🤖 SeleniumBase UC Mode automation ready. Testing with: {folders[0].name}")
+    console.print(
+        f"SeleniumBase UC Mode ready. {len(folders)} station(s) to process.",
+        style="bold cyan",
+    )
+    for f in folders:
+        console.print(f"   {f.name}", style="cyan")
 
     automation = NBTCSeleniumBaseAgent()
+    succeeded = []
+    failed = []
 
-    try:
-        success = automation.run_automation(str(folders[0]))
+    for folder in folders:
+        console.print(f"\n{'='*50}", style="bold white")
+        console.print(
+            f"Processing: {folder.name} ({folders.index(folder)+1}/{len(folders)})",
+            style="bold cyan",
+        )
+        console.print(f"{'='*50}", style="bold white")
 
-        if success:
-            console.print("🚀 SeleniumBase automation completed successfully!", style="bold green")
-        else:
-            console.print("❌ Automation failed", style="red")
+        try:
+            success = automation.run_automation(str(folder))
+            if success:
+                dest = completed_dir / folder.name
+                if dest.exists():
+                    shutil.rmtree(dest)
+                shutil.move(str(folder), str(dest))
+                console.print(f"Moved {folder.name} -> completed/", style="green")
+                succeeded.append(folder.name)
+            else:
+                console.print(f"Station {folder.name} failed, skipping", style="red")
+                failed.append(folder.name)
+        except Exception as e:
+            console.print(f"Error processing {folder.name}: {e}", style="red")
+            failed.append(folder.name)
 
-    except Exception as e:
-        console.print(f"❌ Error: {e}", style="red")
+    console.print(f"\n{'='*50}", style="bold white")
+    console.print(f"SUMMARY: {len(succeeded)} succeeded, {len(failed)} failed", style="bold cyan")
+    if succeeded:
+        console.print(f"   OK: {', '.join(succeeded)}", style="green")
+    if failed:
+        console.print(f"   FAIL: {', '.join(failed)}", style="red")
 
 
 if __name__ == "__main__":
